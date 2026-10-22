@@ -1,0 +1,86 @@
+{
+  "appTitle": {
+    "message": "Fast Browser"
+  },
+  "uiLanguage": {
+    "message": "en"
+  },
+  "checking": {
+    "message": "Checking connection…"
+  },
+  "connected": {
+    "message": "Connected to Fast"
+  },
+  "connecting": {
+    "message": "Connecting to Fast…"
+  },
+  "paused": {
+    "message": "Connection paused"
+  },
+  "startFast": {
+    "message": "Start Fast to connect."
+  },
+  "pause": {
+    "message": "Pause connection"
+  },
+  "resume": {
+    "message": "Resume connection"
+  },
+  "advanced": {
+    "message": "Advanced settings"
+  },
+  "shareUrl": {
+    "message": "Share URL, title and tabs"
+  },
+  "pageContent": {
+    "message": "Share page content and ordinary input"
+  },
+  "automation": {
+    "message": "Allow browser automation"
+  },
+  "sitePermissions": {
+    "message": "Special permissions (per site)"
+  },
+  "currentSite": {
+    "message": "Current site: $1"
+  },
+  "fileAccessHint": {
+    "message": "Enable “Allow access to file URLs” in extension details."
+  },
+  "sensitiveValues": {
+    "message": "Allow reading passwords, verification codes and card details"
+  },
+  "pageMessages": {
+    "message": "Allow messages triggered by this website"
+  },
+  "pageMessagesPlaceholder": {
+    "message": "Trusted sites only; separate types with commas"
+  },
+  "userScripts": {
+    "message": "Allow Fast to run temporary scripts"
+  },
+  "userScriptsHint": {
+    "message": "Enable “Allow user scripts” in extension details."
+  },
+  "saving": {
+    "message": "Saving…"
+  },
+  "save": {
+    "message": "Save settings"
+  },
+  "saved": {
+    "message": "Saved"
+  },
+  "loadError": {
+    "message": "Could not check the connection. Reopen this window."
+  },
+  "saveError": {
+    "message": "Settings were not saved. Check the advanced options and try again."
+  },
+  "connectionError": {
+    "message": "Could not change the connection. Try again shortly."
+  },
+  "openWebsite": {
+    "message": "Open a website to change its permissions."
+  }
+}

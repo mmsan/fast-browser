@@ -6,12 +6,21 @@ import * as f from '@/f'
 import {sendToBackground} from '@/f'
 import _ from 'lodash'
 
+if (typeof __FAST_BROWSER_DEV_BUILD__ !== 'undefined' && __FAST_BROWSER_DEV_BUILD__ && window.top === window) {
+  setInterval(() => {
+    if (!chrome.runtime.id) window.location.reload()
+  }, 1000)
+}
+
 window.f = f
 window._ = _
 
 
 window.addEventListener('send', ({detail}) => {
-  send(detail)
+  try {
+    const message = typeof detail === 'string' ? JSON.parse(detail) : detail
+    contentPort?.postMessage({kind: 'pageEvent', message})
+  } catch {}
 })
 
 
@@ -46,9 +55,7 @@ let socketHandler = {
     document.body.contentEditable = 'true'
   },
   
-  eval_: ({data}) => {
-    eval(data)
-  },
+  // User-provided scripts are executed by the background's permission-gated userScripts API.
   
   refresh: () => {
     if(isFocus) {
@@ -60,23 +67,23 @@ let socketHandler = {
       f.setCookie('toBottomTime', new Date().getTime())
     }
   },
-  getMathJax: ({html}) => {
+  getMathJax: ({html}, reply = send) => {
     let ls = getMathJax(html, 'alt', 'data-tex')
     if(_.size(ls) === 0) return
     
-    send({
+    reply({
       type: 'cmds',
       name: 'mathJax',
       data: ls.join('❄')
     })
   },
-  async click({selector, file, mutible}) {
+  async click({selector, file, mutible}, reply = send) {
     if(!mutible && selector === lastClickSelectorSw && new Date() - lastClickTimeSw < 3000) {
       return
     }
     
     if(_.isNil(selector)) {
-      send({type: 'error', msg: `selector 不能为空\ntype: chrome click 异常\nfile: ${file}`})
+      reply({type: 'error', msg: `selector 不能为空\ntype: chrome click 异常\nfile: ${file}`})
       return
     }
     let el = $(selector)
@@ -93,37 +100,43 @@ let socketHandler = {
         if(!_.size($(e).find(selector))) {
           has = true
           e.click()
-          send({type: 'clickOk'})
+          reply({type: 'clickOk'})
         }
       })
       return
     }
     el.get(0).click()
-    send({type: 'clickOk'})
+    reply({type: 'clickOk'})
   },
-  async has({selector, file}) {
+  async has({selector, file}, reply = send) {
     if(_.isNil(selector)) {
-      send({type: 'error', msg: `selector 不能为空\ntype: chrome has 异常\nfile: ${file}`})
+      reply({type: 'error', msg: `selector 不能为空\ntype: chrome has 异常\nfile: ${file}`})
       return
     }
     let el = $(selector)
     
     
-    send({type: 'hasOk', result: !!_.size(el)})
+    reply({type: 'hasOk', result: !!_.size(el)})
   },
-  async getValue({selector, file, isImmediately}) {
+  async getValue({selector, file, isImmediately, _allowSensitive}, reply = send) {
     if(_.isNil(selector)) {
-      send({type: 'error', msg: `selector 不能为空\ntype: chrome getValue 异常\nfile: ${file}`})
+      reply({type: 'error', msg: `selector 不能为空\ntype: chrome getValue 异常\nfile: ${file}`})
       return
     }
     let el = $(selector)
     if(!_.size(el)) {
       if(isImmediately) {
-        send({type: 'getValueOk', result: null})
+        reply({type: 'getValueOk', result: null})
       }
       return
     }
-    send({type: 'getValueOk', result: el.get(0).value || el.get(0).innerText})
+    const element = el.get(0)
+    const sensitive = element.type === 'password' || /(?:password|one-time-code|cc-number|cc-csc)/i.test(element.autocomplete || '')
+    if(sensitive && !_allowSensitive) {
+      reply({type: 'getValueOk', result: null, error: 'Sensitive input access is not enabled for this website'})
+      return
+    }
+    reply({type: 'getValueOk', result: element.value || element.innerText})
   },
   sysRatio({ratio}) {
     window.sysRatio = ratio
@@ -177,9 +190,9 @@ let socketHandler = {
       return rect(r)
     }
   },
-  async focus({selector, file}) {
+  async focus({selector, file}, reply = send) {
     if(_.isNil(selector)) {
-      send({type: 'error', msg: `selector 不能为空\ntype: chrome find 异常\nfile: ${file}`})
+      reply({type: 'error', msg: `selector 不能为空\ntype: chrome find 异常\nfile: ${file}`})
       return
     }
     let el = $(selector)
@@ -194,17 +207,17 @@ let socketHandler = {
         if(!_.size($(e).find(selector))) {
           has = true
           $(e).focus()
-          send({type: 'focusOk'})
+          reply({type: 'focusOk'})
         }
       })
       return
     }
     el.get(0).focus()
-    send({type: 'focusOk'})
+    reply({type: 'focusOk'})
   },
-  async input({selector, file, value}) {
+  async input({selector, file, value, _bridgeGeneration}, reply = send) {
     if(_.isNil(selector)) {
-      send({type: 'error', msg: `selector 不能为空\ntype: chrome find 异常\nfile: ${file}`})
+      reply({type: 'error', msg: `selector 不能为空\ntype: chrome find 异常\nfile: ${file}`})
       return
     }
     let el = $(selector)
@@ -218,6 +231,7 @@ let socketHandler = {
       return
     }
     
+    if(!bridgePolicy.enabled || !bridgePolicy.automation || bridgePolicy.generation !== _bridgeGeneration) return
     if(_.includes(selector, 'contains')) {
       let has = false
       el.each((i, e) => {
@@ -225,13 +239,14 @@ let socketHandler = {
         if(!_.size($(e).find(selector))) {
           has = true
           $(e).val(value)
-          send({type: 'inputOk'})
+          reply({type: 'inputOk'})
         }
       })
       return
     }
+    if(!bridgePolicy.enabled || !bridgePolicy.automation || bridgePolicy.generation !== _bridgeGeneration) return
     el.val(value)
-    send({type: 'inputOk'})
+    reply({type: 'inputOk'})
   },
 }
 /**
@@ -301,6 +316,8 @@ window.xxx = _
 // endregion
 // region event
 
+let contentPort
+let bridgePolicy = {enabled: false, pageContent: false, automation: false}
 let isOnInput = false
 let keys = {}
 
@@ -608,7 +625,7 @@ window.addEventListener('scroll', (e) => {
 }, true)
 
 function send() {
-  window.send(...arguments)
+  return window.send(...arguments)
 }
 
 _.xxx = 1
@@ -626,102 +643,121 @@ setTimeout(() => {
 //
 // (document.head || document.documentElement).appendChild(s)
 window.send = function() {
-  chrome.runtime.send?.(...arguments)
+  return chrome.runtime.send?.(...arguments)
 }
 
+/** Keep page messaging live through the authenticated background; no key enters the page. */
 function initSocket() {
-  let isReConnecting = false
-  let daemonsTimer
-  
-  function startSocket() {
-    if(!window.WebSocket) {
-      window.WebSocket = window.MozWebSocket
-    }
-    if(!window.WebSocket) return
-    
-    let socket = new WebSocket('ws://localhost:9072/ws1')
-    window.__socket = socket
-    
-    socket.onmessage = async function(event) {
-      let msg = JSON.parse(event.data)
-      if(socketHandler[msg.type]) {
-        let r = await socketHandler[msg.type](msg)
-        if(msg.type === 'position') {
-          console.log(' 33 :| r '+'\n     |', r)
-        }
-        if(!_.isNil(r) && msg.tid) {
-          if(_.isObject(r) && !_.isArray(r)) {
-            r.tid = msg.tid
-          } else {
-            r = {tid: msg.tid, value: r}
-          }
-          send(r)
-        }
-      } else {
-        console.log('[未处理消息]', event)
+  let reconnectTimer, daemonTimer, retryTimer, pendingBytes = 0, messageSequence = 0, receivedPolicy = false
+  const pending = new Map()
+  /** Flush only consented messages, with bounded retention during authentication. */
+  function flush() {
+    if(!contentPort || !bridgePolicy.enabled) return
+    for(const [id, entry] of pending) {
+      if(entry.message._bridgeGeneration !== undefined && entry.message._bridgeGeneration !== bridgePolicy.generation) {
+        entry.finish(false)
+      } else if(!entry.inFlight) {
+        entry.inFlight = true
+        try { contentPort.postMessage({kind: 'message', id, message: entry.message}) } catch { entry.inFlight = false }
       }
     }
-    
-    socket.onopen = function(event) {
-      send({
-        type: 'onFocus',
-        title: document.title,
+  }
+  /** Reattach this document after a background lifecycle restart. */
+  function connect() {
+    try {
+      const port = chrome.runtime.connect({name: 'fast-browser-content'})
+      contentPort = port
+      port.onMessage.addListener(async packet => {
+        if(contentPort !== port) return
+        if(packet.kind === 'receipt') {
+          const entry = pending.get(packet.id)
+          if(!entry) return
+          if(packet.delivered || !packet.retryable) entry.finish(packet.delivered === true)
+          else {
+            entry.inFlight = false
+            clearTimeout(retryTimer)
+            retryTimer = setTimeout(flush, 250)
+          }
+          return
+        }
+        if(packet.kind === 'policy') {
+          bridgePolicy = packet.policy
+          receivedPolicy = true
+          if(!bridgePolicy.enabled) for(const entry of pending.values()) entry.finish(false)
+          flush()
+          return
+        }
+        if(packet.kind === 'connected') {
+          flush()
+          send({type: document.hasFocus() ? 'onFocus' : 'daemons'})
+          return
+        }
+        const msg = packet.message
+        if(packet.kind !== 'command' || !bridgePolicy.enabled || !bridgePolicy.automation || msg?._bridgeGeneration !== bridgePolicy.generation || !Object.hasOwn(socketHandler, msg?.type)) return
+        /** Keep replies attached to the live document and authorization generation. */
+        function reply(message) {
+          if(contentPort === port && bridgePolicy.enabled && bridgePolicy.automation && bridgePolicy.generation === msg._bridgeGeneration) {
+            send({...message, _bridgeGeneration: msg._bridgeGeneration})
+          }
+        }
+        try {
+          const result = await socketHandler[msg.type](msg, reply)
+          if(result != null && msg.tid) reply(_.isObject(result) && !_.isArray(result) ? {...result, tid: msg.tid} : {tid: msg.tid, value: result})
+        } catch {
+          reply({type: 'error', msg: 'Browser page action failed', tid: msg.tid})
+        }
       })
-      if(daemonsTimer) return
-      daemonsTimer = window.setInterval(() => {
-        send({
-          type: 'daemons'
-        })
-      }, 10000)
-    }
-    
-    function reConnect() {
-      if(isReConnecting) return
-      isReConnecting = true
-      
-      
-      // 重新连接
-      setTimeout(() => {
-        startSocket()
-        
-        isReConnecting = false
-      }, 2000)
-    }
-    
-    socket.onclose = function(event) {
-      reConnect()
-    }
-    socket.onerror = function(event) {
-      reConnect()
+      port.onDisconnect.addListener(() => {
+        void chrome.runtime.lastError
+        if(contentPort !== port) return
+        contentPort = null
+        receivedPolicy = false
+        for(const entry of pending.values()) entry.inFlight = false
+        bridgePolicy = {enabled: false, pageContent: false, automation: false}
+        clearTimeout(reconnectTimer)
+        reconnectTimer = setTimeout(connect, 1000)
+      })
+    } catch {
+      reconnectTimer = setTimeout(connect, 1000)
     }
   }
-  
-  startSocket()
-  
+  /** Preserve string/object messages and confirm delivery before callers close a page. */
   function send_(message) {
-    if(_.isString(message)) {
-      message = JSON.parse(message)
-    }
-    message.timeFocus = timeFocus.getTime()
-    message.title = document.title
-    message.__from = 'fastExtension' // ----------------------------------
-    message = JSON.stringify(message)
-    if(!window.WebSocket) {
-      return
-    }
-    
-    let socket = window.__socket
-    if(socket && socket.readyState == WebSocket.OPEN) {
-      socket.send(message)
-    } else {
-      setTimeout(() => {
-        send_(message)
-      }, 100)
+    if(receivedPolicy && !bridgePolicy.enabled) return Promise.resolve(false)
+    try {
+      if(typeof message === 'string') message = JSON.parse(message)
+      message = {...message, timeFocus: timeFocus.getTime(), title: document.title}
+      const bytes = JSON.stringify(message).length * 2
+      if(pending.size >= 100 || pendingBytes + bytes > 2 * 1024 * 1024) return Promise.resolve(false)
+      const id = String(++messageSequence)
+      return new Promise(resolve => {
+        const timer = setTimeout(() => finish(false), 10000)
+        /** Release retained data after delivery, denial or a bounded startup timeout. */
+        function finish(delivered) {
+          if(!pending.delete(id)) return
+          clearTimeout(timer)
+          pendingBytes -= bytes
+          resolve(delivered)
+        }
+        pending.set(id, {message, finish, inFlight: false})
+        pendingBytes += bytes
+        flush()
+      })
+    } catch {
+      return Promise.resolve(false)
     }
   }
-  
+
   chrome.runtime.send = send_
   send = send_
+  connect()
+  daemonTimer = setInterval(() => send({type: 'daemons'}), 10000)
+  window.addEventListener('pagehide', () => {
+    clearInterval(daemonTimer)
+    clearTimeout(reconnectTimer)
+    clearTimeout(retryTimer)
+    for(const entry of pending.values()) entry.finish(false)
+  }, {once: true})
 }
 
 function selectText(element) {
@@ -778,7 +814,7 @@ function hotkey() {
   
   // 快捷键
   document.onkeydown = function(e) {
-    if(e.key !== 'Shift') return
+    if(e.key !== 'Shift' || !e.isTrusted || !bridgePolicy.enabled || !bridgePolicy.pageContent) return
     
     if(new Date() - lastCtrlDown < 3000) return
     lastCtrlDown = new Date()
@@ -792,7 +828,7 @@ function hotkey() {
     // $ = $$
   }
   document.onkeyup = function(e) {
-    if(e.key === 'Control') {
+    if(e.key === 'Control' && e.isTrusted && bridgePolicy.enabled) {
       // 弹出 fast.exe 命令界面
       send(JSON.stringify({
         type: 'openFast',

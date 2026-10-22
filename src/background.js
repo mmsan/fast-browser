@@ -1,6 +1,7 @@
 import _ from 'lodash'
 import * as f from '@/f'
 import 'babel-polyfill'
+import {installBrowserBridge} from './browser-bridge.js'
 
 // region msg
 let tabs = {} // tabId: tab
@@ -15,6 +16,7 @@ const chromeHwndStorageKey = 'chromeHwnd'
 let chromeHwnd
 let chromeHwndRequestPromise
 const tabObservers = new Set()
+let bridge
 const msgHandler = {
   init({tab, frameId}) {
     tabs[tab.id] = tab
@@ -80,8 +82,9 @@ const msgHandler = {
       return ratioSysChrome
     }
   },
-  close({tab}) {
-    chrome.tabs.remove(tab.id)
+  async close({tab}) {
+    await bridge?.ready
+    if(bridge?.settings.enabled && bridge.settings.automation && tab) chrome.tabs.remove(tab.id)
   },
   async sendToTab({msg}) {
     await send(msg.tabId, msg)
@@ -109,6 +112,7 @@ const msgHandler = {
     })
   },
   allTabs({msg}) {
+    if(!bridge?.settings.shareUrl) return {tabs: []}
     sendToFast({
       tabs: _.map(_.values(tabs), (v, k) => {
         return {
@@ -129,8 +133,7 @@ const msgHandler = {
       }
       return
     }
-    msg.type = msg._type || msg.type
-    sendToFast(msg)
+    throw new Error('Page data must use its authenticated content channel')
   },
 }
 
@@ -151,7 +154,7 @@ async function getCurrentUrlSnapshot() {
 
   try {
     const window = await chrome.windows.getLastFocused({populate: false})
-    if(revision !== currentUrlRevision || !window?.focused || window.id == null) return failed()
+    if(!bridge?.settings.shareUrl || revision !== currentUrlRevision || !window?.focused || window.id == null) return failed()
 
     const [tab] = await chrome.tabs.query({active: true, windowId: window.id})
     if(revision !== currentUrlRevision || !tab) return failed()
@@ -195,7 +198,7 @@ function isCurrentUrlTab(tab) {
 function signalCurrentUrl(invalidate) {
   if(invalidate) currentUrlRevision++
   const socket = self.__socket
-  if(socket?.readyState !== 1) return
+  if(socket?.readyState !== 1 || !bridge?.settings.shareUrl) return
 
   try {
     socket.send(JSON.stringify({
@@ -242,6 +245,7 @@ async function setupOffscreenDocument() {
 
 chrome.runtime.onInstalled.addListener(setupOffscreenDocument)
 chrome.runtime.onStartup.addListener(setupOffscreenDocument)
+if (typeof __FAST_BROWSER_DEV_BUILD__ !== 'undefined' && __FAST_BROWSER_DEV_BUILD__) void setupOffscreenDocument().catch(console.error)
 // const result= {} // tid(时间戳_uid): data
 // chrome.runtime.onMessage.addListener((msg, sender) => {
 //   if(msg?.type === 'sendToTab') {
@@ -265,10 +269,21 @@ chrome.runtime.onStartup.addListener(setupOffscreenDocument)
 // })
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if(msg?.dst === 'offscreen') return
+  if (msg?.type === 'developmentReload') {
+    if (typeof __FAST_BROWSER_DEV_BUILD__ !== 'undefined' && __FAST_BROWSER_DEV_BUILD__ && sender.id === chrome.runtime.id && !sender.tab &&
+        sender.url === chrome.runtime.getURL(OFFSCREEN_DOCUMENT_PATH) &&
+        typeof msg.version === 'string' && /^[0-9a-f-]{36}$/.test(msg.version) &&
+        Number.isSafeInteger(msg.builtAt) && msg.builtAt > __FAST_BROWSER_DEV_BUILD__.builtAt) {
+      chrome.runtime.reload()
+    }
+    return
+  }
+  if(msg?.dst === 'offscreen' || ['bridgeGetSettings', 'bridgeSaveSettings'].includes(msg?.type)) return
   (async () => {
     try {
-      const h = msgHandler[msg?.type]
+      if(sender.id !== chrome.runtime.id) throw new Error('Invalid extension sender')
+      if(sender.tab && !['init', 'topOffset', 'ratioSys', 'close', 'getImageColor', 'isRunning', 'sendToFast', 'only'].includes(msg?.type)) throw new Error('Content action is not allowed')
+      const h = Object.hasOwn(msgHandler, msg?.type) && msgHandler[msg?.type]
       if(!h) {
         sendResponse({ok: false, error: `UNKNOWN_TYPE ${msg?.type}`})
         return
@@ -483,135 +498,52 @@ function requestFromFast(msg, timeout = 1000) {
   })
 }
 
+/** Start the shared authenticated bridge without changing current-URL reply correlation. */
 function initSocket() {
-  let isReConnecting = false
-  let daemonsTimer
+  if(!self.WebSocket) return
   let currentUrlTimer
-
-  /**
-   * Send a request response only on the socket that received the request.
-   */
-  function sendCurrentUrlResponse(socket, msg) {
-    if(socket !== self.__socket || socket.readyState !== WebSocket.OPEN) return
-
-    try {
-      socket.send(JSON.stringify({...msg, __from: 'fastChromeBackground'}))
-    } catch(e) {
-    }
-  }
-  
-  function startSocket() {
-    if(!self.WebSocket) {
-      self.WebSocket = self.MozWebSocket
-    }
-    if(!self.WebSocket) return
-    
-    let socket = new WebSocket('ws://localhost:9072/ws1')
-    self.__socket = socket
-    
-    socket.onmessage = async function(event) {
-      let msg = JSON.parse(event.data)
-      const pending = pendingFastRequests[msg.tid]
+  bridge = installBrowserBridge({
+    onPolicyChanged() {
+      self.__socket = null
+      currentUrlRevision++
+    },
+    onReady(socket) {
+      self.__socket = socket
+      socket.send(JSON.stringify({type: 'browserReady', __from: 'fastChromeBackground'}))
+      signalCurrentUrl(true)
+      if(!currentUrlTimer) currentUrlTimer = self.setInterval(() => signalCurrentUrl(false), 1000)
+    },
+    async onMessage(msg, socket) {
+      if(msg?.type === 'browserPage') {
+        await bridge.deliver(msg, socket)
+        return
+      }
+      if(!msg || typeof msg !== 'object') return
+      const pending = Object.hasOwn(pendingFastRequests, msg.tid) && pendingFastRequests[msg.tid]
       if(pending) {
-        _.unset(pendingFastRequests, msg.tid)
+        delete pendingFastRequests[msg.tid]
         pending(msg)
         return
       }
-      if(msgHandler[msg.type]) {
-        try {
-          let data = await msgHandler[msg.type]({msg})
-          if(data) {
-            if(!_.isObject(data)) {
-              data={result: data}
-            }
-            const response = {ok: true, data, tid: msg.tid}
-            if(msg.type === 'getCurrentUrl') {
-              sendCurrentUrlResponse(socket, response)
-            } else {
-              sendToFast(response)
-            }
-          }
-        } catch (e) {
-          _error(e.message + '\n' + e.stack.toString())
-          const response = {
-            ok: false,
-            type: e.type,
-            error: e.message,
-            stack: e.stack.toString()
-          }
-          if(msg.type === 'getCurrentUrl') {
-            sendCurrentUrlResponse(socket, {...response, tid: msg.tid})
-          } else {
-            sendToFast(response)
-          }
-        }
-        
-      } else {
-        console.log('[未处理消息]', event)
+      const handler = Object.hasOwn(msgHandler, msg.type) && msgHandler[msg.type]
+      if(!handler) return
+      try {
+        if(['reload', 'goto', 'ping', 'sendToTab', 'close', 'only'].includes(msg.type) && !bridge.settings.automation) throw new Error('Automation is disabled')
+        const data = await handler({msg})
+        if(data !== undefined && socket === self.__socket && socket?.readyState === 1) socket.send(JSON.stringify({ok: true, data: _.isObject(data) ? data : {result: data}, tid: msg.tid, __from: 'fastChromeBackground'}))
+      } catch {
+        if(socket === self.__socket && socket?.readyState === 1) socket.send(JSON.stringify({ok: false, error: 'Browser action failed', tid: msg.tid, __from: 'fastChromeBackground'}))
       }
-    }
-    
-    socket.onopen = function(event) {
-      signalCurrentUrl(true)
-      if(!currentUrlTimer) {
-        currentUrlTimer = self.setInterval(() => signalCurrentUrl(false), 1000)
-      }
-      if(daemonsTimer) return
-      daemonsTimer = self.setInterval(() => {
-        send({
-          type: 'daemons'
-        })
-      }, 10000)
-    }
-    
-    function reConnect() {
-      if(isReConnecting) return
-      isReConnecting = true
-      
-      
-      // 重新连接
-      setTimeout(() => {
-        startSocket()
-        
-        isReConnecting = false
-      }, 300)
-    }
-    
-    socket.onclose = function(event) {
-      reConnect()
-    }
-    socket.onerror = function(event) {
-      reConnect()
-    }
-  }
-  
-  startSocket()
-  
-  function send(message) {
-    if(_.isString(message)) {
-      message = JSON.parse(message)
-    }
+    },
+  })
+  sendToFast = message => {
+    if(typeof message === 'string') message = JSON.parse(message)
     if(message.type === 'currentUrl') {
       signalCurrentUrl(message.invalidate !== false)
       return
     }
-    message.__from = 'fastChromeBackground' // ----------------------------------
-    message = JSON.stringify(message)
-    if(!self.WebSocket) {
-      return
-    }
-    
-    let socket = self.__socket
-    if(socket && socket.readyState == WebSocket.OPEN) {
-      socket.send(message)
-    } else {
-      setTimeout(() => {
-        send(message)
-      }, 100)
-    }
+    bridge.send({...message, __from: 'fastChromeBackground'})
   }
-  
-  sendToFast = send
 }
 
 

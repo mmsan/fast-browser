@@ -112,3 +112,25 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 
 
+
+if (typeof __FAST_BROWSER_DEV_BUILD__ !== 'undefined' && __FAST_BROWSER_DEV_BUILD__) {
+  let checking = false
+  /** Detect completed local builds; a stopped dev process leaves the last build fully usable. */
+  async function checkDevelopmentBuild() {
+    if (checking) return
+    checking = true
+    try {
+      const response = await fetch(chrome.runtime.getURL('dev-build.json'), {cache: 'no-store'})
+      if (!response.ok) return
+      const {version, builtAt} = await response.json()
+      if (typeof version === 'string' && /^[0-9a-f-]{36}$/.test(version) && Number.isSafeInteger(builtAt) && builtAt > __FAST_BROWSER_DEV_BUILD__.builtAt) {
+        await chrome.runtime.sendMessage({type: 'developmentReload', version, builtAt})
+      }
+    } catch {
+      // Missing or temporarily unavailable output must not interrupt normal extension operation.
+    } finally {
+      checking = false
+    }
+  }
+  setInterval(checkDevelopmentBuild, 1000)
+}

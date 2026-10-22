@@ -28,12 +28,11 @@ function localOutput(root, relativePath) {
 }
 
 /** Share the manifest, toolchain, dependencies and source assets with extension applications. */
-export function createBrowserConfig({projectRoot = browserRoot, extensionManifest = manifest, output = 'public', plugins = []} = {}) {
+export function createBrowserConfig({projectRoot = browserRoot, extensionManifest = manifest, plugins = []} = {}) {
   const root = fs.realpathSync(projectRoot)
-  const outDir = localOutput(root, path.join('dist', output))
-  const releaseDir = localOutput(root, path.join('release', output))
+  const outDir = localOutput(root, 'dist')
+  const releaseDir = localOutput(root, 'release')
   const archiveTime = new Date().toISOString().replace(/[:.]/g, '-')
-  const sourceRoots = [...new Set([path.join(browserRoot, 'src'), path.join(root, 'src')])]
   return {
     root: browserRoot,
     envDir: root,
@@ -42,39 +41,21 @@ export function createBrowserConfig({projectRoot = browserRoot, extensionManifes
       alias: {'@': path.join(browserRoot, 'src')},
       dedupe: Object.keys(pkg.dependencies),
     },
+    define: {__FAST_BROWSER_DEV_BUILD__: 'null'},
     plugins: [
-      {
-        name: 'browser-runtime-reload',
-        enforce: 'pre',
-        /** Reload startup effects once for shared or application JavaScript changes. */
-        handleHotUpdate({file, server}) {
-          if (file.endsWith('.js') && sourceRoots.some(source => isWithin(source, file))) {
-            server.ws.send({type: 'custom', event: 'crx:runtime-reload'})
-            return []
-          }
-        },
-      },
       ...plugins,
       vue(),
       crx({manifest: extensionManifest}),
-      zip({
+      {...zip({
         inDir: outDir,
         outDir: releaseDir,
         outFileName: `crx-${extensionManifest.name}-${extensionManifest.version}-${archiveTime}-${process.pid}.zip`,
-      }),
+      }), name: 'browser-release-archive'},
     ],
     build: {
       outDir,
       emptyOutDir: true,
       rollupOptions: {input: {offscreen: path.join(browserRoot, 'src/offscreen.html')}},
     },
-    server: {
-      port: 18000,
-      strictPort: true,
-      fs: {allow: [...new Set([browserRoot, root])]},
-      hmr: {host: 'localhost', port: 18000, clientPort: 18000, protocol: 'ws'},
-      cors: {origin: [/chrome-extension:\/\//]},
-    },
-    preview: {port: 18000},
   }
 }

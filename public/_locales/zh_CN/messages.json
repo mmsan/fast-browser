@@ -1,0 +1,86 @@
+{
+  "appTitle": {
+    "message": "Fast Browser"
+  },
+  "uiLanguage": {
+    "message": "zh-CN"
+  },
+  "checking": {
+    "message": "正在检查连接…"
+  },
+  "connected": {
+    "message": "已连接 Fast"
+  },
+  "connecting": {
+    "message": "正在连接 Fast…"
+  },
+  "paused": {
+    "message": "已暂停连接"
+  },
+  "startFast": {
+    "message": "请先启动 Fast."
+  },
+  "pause": {
+    "message": "暂停连接"
+  },
+  "resume": {
+    "message": "恢复连接"
+  },
+  "advanced": {
+    "message": "高级设置"
+  },
+  "shareUrl": {
+    "message": "共享地址、标题和标签"
+  },
+  "pageContent": {
+    "message": "共享页面内容和普通输入"
+  },
+  "automation": {
+    "message": "允许浏览器自动操作"
+  },
+  "sitePermissions": {
+    "message": "特殊权限 (按网站)"
+  },
+  "currentSite": {
+    "message": "当前网站: $1"
+  },
+  "fileAccessHint": {
+    "message": "需在插件详情开启“允许访问文件网址”."
+  },
+  "sensitiveValues": {
+    "message": "允许读取密码、验证码及银行卡敏感输入"
+  },
+  "pageMessages": {
+    "message": "允许网页触发的消息"
+  },
+  "pageMessagesPlaceholder": {
+    "message": "可信网站专用, 用逗号分隔"
+  },
+  "userScripts": {
+    "message": "允许 Fast 执行临时脚本"
+  },
+  "userScriptsHint": {
+    "message": "需在插件详情开启“允许用户脚本”."
+  },
+  "saving": {
+    "message": "保存中…"
+  },
+  "save": {
+    "message": "保存设置"
+  },
+  "saved": {
+    "message": "已保存"
+  },
+  "loadError": {
+    "message": "暂时无法读取连接状态, 请重新打开此窗口."
+  },
+  "saveError": {
+    "message": "设置未保存, 请检查高级选项后重试."
+  },
+  "connectionError": {
+    "message": "暂时无法更改连接状态, 请稍后重试."
+  },
+  "openWebsite": {
+    "message": "请先打开网页, 再设置该网站的权限."
+  }
+}

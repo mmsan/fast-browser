@@ -4,12 +4,14 @@ const pkg = JSON.parse(fs.readFileSync(new URL('./package.json', import.meta.url
 
 export default defineManifest({
   manifest_version: 3,
+  default_locale: 'en',
   name: pkg.name,
   version: pkg.version,
   icons: {
     48: 'logo.png',
   },
   action: {
+    default_title: '__MSG_appTitle__',
     default_icon: {
       48: 'logo.png',
     },
@@ -24,9 +26,12 @@ export default defineManifest({
     'sidePanel',
     "storage",
     "tabs",
-    "offscreen"
+    "offscreen",
+    'nativeMessaging'
   ],
   
+  optional_permissions: ['userScripts'],
+  optional_host_permissions: ['http://*/*', 'https://*/*', 'file:///*'],
   side_panel: {
     default_path: 'src/sidepanel/index.html',
   },

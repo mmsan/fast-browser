@@ -4,11 +4,11 @@ Standalone public Chrome extension. A checkout builds using only its public sour
 
 Run `npm ci`, then:
 
-- `npm run dev`: live development on port 18000, output in `dist/public`.
-- `npm run build`: builds `dist/public` and a timestamped ZIP in `release/public`.
+- `npm run dev`: watch shared/application sources and automatically build a self-contained `dist`. Successful builds reload the extension and content pages; no development server or port is required. Stopping dev keeps the last successful bundle usable. Failed builds leave `dist` unchanged.
+- `npm run build`: builds `dist` and a timestamped ZIP in `release`.
 - `npm run production`: the public release-package command, using the same build pipeline.
 
-Load `dist/public` as an unpacked extension. Packaging does not install, upload or restart an extension. Enable only one related extension at a time. Changing the unpacked path can change its ID; keep the old installation until its stored settings have been checked.
+Load `dist` as an unpacked extension. Packaging does not install, upload or restart an extension. Enable only one related extension at a time. Changing the unpacked path can change its ID; keep the old installation until its stored settings have been checked.
 
 ## Shared application building
 
@@ -24,4 +24,12 @@ MIT; see [LICENSE](LICENSE). Third-party dependencies retain their respective li
 
 ## Security
 
-The local Fast bridge currently assumes trusted peers and does not authenticate WebSocket senders. The existing `eval_` action remains subject to Chrome Manifest V3's content security policy.
+On Windows, extensions installed from an application-approved output connect automatically when Fast is running. No pairing code or port setup is required. The normal popup shows connection status and Pause/Resume; data and website controls remain under Advanced settings. Installation enables the local connection, URL/title/tab metadata, ordinary page-content sharing and existing browser actions; users can pause or limit these controls. Password/OTP/card reads, website-triggered messages and user scripts still require their separate grants. Existing saved settings and deliberate pauses survive builds and live reloads.
+
+Use the matching FastJS runtime with this extension. The runtime registers the exact approved extension IDs with the current user's Chrome/Edge native host, `com.fastgoto.browser`. The existing Fast helper supplies only the invoking extension's derived credential; it has no generic command interface. The application master key stays in the Host vault; only per-extension derived keys enter a Windows DPAPI-protected local cache and trusted extension storage, never source, environment files, URLs or cloud sync. Native setup uses no new network port or administrator prompt. Only the background connects to the IPv4 loopback service; content scripts use document-scoped extension ports and never receive the key. Both peers prove knowledge of the pairing key with fresh challenges. Directional AES-GCM frames authenticate and encrypt payloads, reject replays, and have bounded size/queues. Unauthenticated browser clients cannot use the native editor route.
+
+The popup independently controls URL/title/tab metadata, page-content sharing and browser automation. Password, OTP and sensitive card input reads need an additional website grant. Local files keep Chrome's existing file-access toggle and use an exact-document grant instead of a shared opaque origin. Shift still supplies the existing button-label list after consent. Bundled application rules retain their messages and actions. The DOM `send` event is a separate website-controlled entrypoint: it is denied by default and requires an exact-origin message-type grant. Such a grant trusts that website's scripts to invoke those named local handlers. Disabling page-content sharing also stops these website events.
+
+The `eval_` message remains available for scripts supplied by the user, through Chrome's `userScripts.execute` API rather than extension `eval`. Enable it separately for the current website, grant the optional userScripts/site permissions and enable Chrome's Allow User Scripts switch (Chrome 135+; before 138, Developer mode). The user-script world is separate from the extension's content-script globals. Bundled application handlers do not need this permission.
+
+Development uses the same public build pipeline, with isolated staging output and no release ZIP per save. Assets are copied before entrypoints, and a local build marker is committed last. Old assets remain available for open pages until a clean build. Only the development bundle checks its own marker through the existing offscreen document; the background accepts reload notices only from that exact extension document. Production builds contain no development polling or development-server dependency. Restart the dev command after changing build tooling.

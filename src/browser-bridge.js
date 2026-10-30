@@ -310,6 +310,7 @@ export function installBrowserBridge({onMessage, onReady, onPolicyChanged}) {
     ready.then(() => port.postMessage({kind: 'policy', policy: policy(page)})).catch(() => {})
     /** Validate each document packet before passing it to the trusted service. */
     async function receive(packet) {
+      const version = generation
       const message = packet?.message
       if(!settings.enabled || !nativeAvailable || !message || typeof message !== 'object' || Array.isArray(message)) return
       if(JSON.stringify(message).length > limit) return
@@ -327,6 +328,7 @@ export function installBrowserBridge({onMessage, onReady, onPolicyChanged}) {
       if(message.type === 'onFocus') {
         const [tab] = await chrome.tabs.query({active: true, lastFocusedWindow: true})
         const window = await chrome.windows.getLastFocused()
+        if(version !== generation || pages.get(channel) !== page || !nativeAvailable || bridge.readyState !== 1) return
         if(!window.focused || tab?.id !== page.tabId) return
         page.timeFocus = Date.now()
       }

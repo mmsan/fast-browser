@@ -25,9 +25,6 @@ if errorlevel 1 (
   echo ERROR: Configure the intended origin remote before backing up.
   goto fail
 )
-rem Preserve independently staged work.
-git diff --cached --quiet || goto fail
-
 git fetch --prune --no-tags origin || goto fail
 
 git add -A -- . ":(glob,exclude)**/*.vsix" ":(glob,exclude)**/.env*" ":(glob,exclude)**/*.pem" ":(glob,exclude)**/*.key" ":(glob,exclude)**/*.pfx" || goto fail

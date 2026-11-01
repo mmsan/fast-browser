@@ -184,20 +184,55 @@ export function createEncryptedConnection({bootstrap, onMessage, onReady, onClos
   return connection
 }
 
+/** Bound native bootstrap and release the helper even when it never replies. */
+function requestBootstrap() {
+  return new Promise((resolve, reject) => {
+    const port = chrome.runtime.connectNative('com.fastgoto.browser')
+    const timer = setTimeout(() => finish(reject, new Error('Local connection timed out')), 5000)
+    /** Settle once and disconnect the native helper. */
+    function finish(callback, value) {
+      clearTimeout(timer)
+      port.onMessage.removeListener(onMessage)
+      port.onDisconnect.removeListener(onDisconnect)
+      try { port.disconnect() } catch {}
+      callback(value)
+    }
+    /** Accept the first native reply for existing validation. */
+    function onMessage(response) {
+      finish(resolve, response)
+    }
+    /** Reject when the native helper exits before replying. */
+    function onDisconnect() {
+      finish(reject, new Error(chrome.runtime.lastError?.message || 'Local connection unavailable'))
+    }
+    port.onMessage.addListener(onMessage)
+    port.onDisconnect.addListener(onDisconnect)
+    try { port.postMessage({version: 2, type: 'connect'}) } catch(error) { finish(reject, error) }
+  })
+}
+
 /** Own automatic native bootstrap, local consent and document-scoped routing. */
 export function installBrowserBridge({onMessage, onReady, onPolicyChanged}) {
   let settings = {...defaults, sites: {}}
   let nativeAvailable = false, connection, retryTimer, generation = 0
   const pages = new Map()
-  const ready = chrome.storage.local.setAccessLevel({accessLevel: 'TRUSTED_CONTEXTS'}).then(async () => {
-    const stored = await chrome.storage.local.get(['bridgeSettings', 'bridgePaused'])
-    await chrome.storage.local.remove(['bridgeKey', 'bridgeKeyMode'])
-    if(stored.bridgeSettings) settings = normalizeSettings(stored.bridgeSettings)
-    if(stored.bridgePaused === true) settings.enabled = false
-    if(!stored.bridgeSettings) await chrome.storage.local.set({bridgeSettings: settings})
-    reconnect()
-  })
-  ready.catch(() => {})
+  const ready = (async () => {
+    while(true) {
+      try {
+        await chrome.storage.local.setAccessLevel({accessLevel: 'TRUSTED_CONTEXTS'})
+        const stored = await chrome.storage.local.get(['bridgeSettings', 'bridgePaused'])
+        await chrome.storage.local.remove(['bridgeKey', 'bridgeKeyMode'])
+        const loaded = stored.bridgeSettings ? normalizeSettings(stored.bridgeSettings) : {...defaults, sites: {}}
+        if(stored.bridgePaused === true) loaded.enabled = false
+        if(!stored.bridgeSettings) await chrome.storage.local.set({bridgeSettings: loaded})
+        settings = loaded
+        reconnect()
+        return
+      } catch {
+        await new Promise(resolve => setTimeout(resolve, 5000))
+      }
+    }
+  })()
 
   /** Return only the current page's grant, never the pairing key or another site's data. */
   function policy(page) {
@@ -217,7 +252,7 @@ export function installBrowserBridge({onMessage, onReady, onPolicyChanged}) {
     if(!settings.enabled) return
     let bootstrap
     try {
-      const response = await chrome.runtime.sendNativeMessage('com.fastgoto.browser', {version: 2, type: 'connect'})
+      const response = await requestBootstrap()
       if(version !== generation) return
       const fields = ['version', 'ok', 'client', 'clientNonce', 'peerPid', 'ticket', 'key', 'expires', 'port']
       if(!response || Object.keys(response).length !== fields.length || !fields.every(field => Object.hasOwn(response, field)) ||

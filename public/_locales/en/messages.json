@@ -1,6 +1,8 @@
 {
+  "port": { "message": "WebSocket port" },
+  "portHint": { "message": "Default: 9072. If F12 shows a different port, enter the actual WebSocket port. The connection address is always 127.0.0.1." },
   "appTitle": {
-    "message": "Fast Browser"
+    "message": "Fast Bridge"
   },
   "uiLanguage": {
     "message": "en"
@@ -47,20 +49,11 @@
   "fileAccessHint": {
     "message": "Enable “Allow access to file URLs” in extension details."
   },
-  "sensitiveValues": {
-    "message": "Allow reading passwords, verification codes and card details"
-  },
   "pageMessages": {
     "message": "Allow messages triggered by this website"
   },
   "pageMessagesPlaceholder": {
     "message": "Trusted sites only; separate types with commas"
-  },
-  "userScripts": {
-    "message": "Allow Fast to run temporary scripts"
-  },
-  "userScriptsHint": {
-    "message": "Enable “Allow user scripts” in extension details."
   },
   "saving": {
     "message": "Saving…"

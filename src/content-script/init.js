@@ -55,7 +55,6 @@ let socketHandler = {
     document.body.contentEditable = 'true'
   },
   
-  // User-provided scripts are executed by the background's permission-gated userScripts API.
   
   refresh: () => {
     if(isFocus) {
@@ -118,7 +117,7 @@ let socketHandler = {
     
     reply({type: 'hasOk', result: !!_.size(el)})
   },
-  async getValue({selector, file, isImmediately, _allowSensitive}, reply = send) {
+  async getValue({selector, file, isImmediately}, reply = send) {
     if(_.isNil(selector)) {
       reply({type: 'error', msg: `selector 不能为空\ntype: chrome getValue 异常\nfile: ${file}`})
       return
@@ -131,9 +130,9 @@ let socketHandler = {
       return
     }
     const element = el.get(0)
-    const sensitive = element.type === 'password' || /(?:password|one-time-code|cc-number|cc-csc)/i.test(element.autocomplete || '')
-    if(sensitive && !_allowSensitive) {
-      reply({type: 'getValueOk', result: null, error: 'Sensitive input access is not enabled for this website'})
+    const sensitive = element.type === 'password' || /(?:password|one-time-code|cc-)/i.test(element.autocomplete || '')
+    if(sensitive) {
+      reply({type: 'getValueOk', result: null, error: 'Reading sensitive input is not supported'})
       return
     }
     reply({type: 'getValueOk', result: element.value || element.innerText})

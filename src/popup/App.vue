@@ -1,13 +1,13 @@
 <script setup>
 import {computed, onMounted, onUnmounted, reactive, ref} from 'vue'
+import AdditionalSettings from '../additional-settings.js'
 
 const t = chrome.i18n.getMessage
 
 const settings = reactive({port: 9072, enabled: true, shareUrl: true, pageContent: true, automation: true, sites: {}})
 const origin = ref('')
 const pageTypes = ref('')
-const sensitiveValues = ref(false)
-const userScripts = ref(false)
+const additionalSettings = ref(null)
 const connected = ref(false)
 const saving = ref(false)
 const loaded = ref(false)
@@ -28,8 +28,6 @@ async function load(includeSettings = false) {
       origin.value = response.data.origin
       const site = settings.sites[origin.value] || {}
       pageTypes.value = (site.pageTypes || []).join(', ')
-      sensitiveValues.value = site.sensitiveValues === true
-      userScripts.value = site.userScripts === true
     }
     loaded.value = true
   } catch {
@@ -43,12 +41,9 @@ async function save() {
   saved.value = false
   error.value = ''
   try {
-    if(userScripts.value && origin.value) {
-      const granted = await chrome.permissions.request({permissions: ['userScripts'], origins: [origin.value.startsWith('file:') ? 'file:///*' : origin.value + '/*']})
-      if(!granted) throw new Error()
-    }
+    const extra = await additionalSettings.value?.save()
     if(origin.value) settings.sites[origin.value] = {
-      pageTypes: pageTypes.value.split(/[,\s]+/).filter(Boolean), sensitiveValues: sensitiveValues.value, userScripts: userScripts.value,
+      ...extra, pageTypes: pageTypes.value.split(/[,\s]+/).filter(Boolean),
     }
     const response = await chrome.runtime.sendMessage({type: 'bridgeSaveSettings', settings: JSON.parse(JSON.stringify(settings))})
     if(!response?.ok) throw new Error()
@@ -102,10 +97,10 @@ onUnmounted(() => clearInterval(statusTimer))
     <details>
       <summary>{{ t('advanced') }}</summary>
       <form @submit.prevent="save">
-        <label>WebSocket 端口 / Port
+        <label>{{ t('port') }}
           <input v-model.number="settings.port" type="number" inputmode="numeric" min="1" max="65535" step="1" required>
         </label>
-        <p class="hint">默认 9072。若 F12 显示端口已切换，请填写实际 WebSocket 端口；连接地址固定为 127.0.0.1。</p>
+        <p class="hint">{{ t('portHint') }}</p>
         <label class="check"><input v-model="settings.shareUrl" type="checkbox">{{ t('shareUrl') }}</label>
         <label class="check"><input v-model="settings.pageContent" type="checkbox">{{ t('pageContent') }}</label>
         <label class="check"><input v-model="settings.automation" type="checkbox">{{ t('automation') }}</label>
@@ -114,12 +109,10 @@ onUnmounted(() => clearInterval(statusTimer))
           <fieldset :disabled="!origin">
             <legend>{{ origin ? t('currentSite', origin) : t('openWebsite') }}</legend>
             <p v-if="origin.startsWith('file:')" class="hint">{{ t('fileAccessHint') }}</p>
-            <label class="check"><input v-model="sensitiveValues" type="checkbox">{{ t('sensitiveValues') }}</label>
             <label>{{ t('pageMessages') }}
               <input v-model="pageTypes" autocomplete="off" :placeholder="t('pageMessagesPlaceholder')">
             </label>
-            <label class="check"><input v-model="userScripts" type="checkbox">{{ t('userScripts') }}</label>
-            <p v-if="userScripts" class="hint">{{ t('userScriptsHint') }}</p>
+            <component :is="AdditionalSettings" v-if="AdditionalSettings" ref="additionalSettings" :origin="origin" :site="settings.sites[origin]" />
           </fieldset>
         </details>
         <button type="submit" :disabled="saving">{{ saving ? t('saving') : t('save') }}</button>

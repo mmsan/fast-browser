@@ -1,6 +1,13 @@
 const encoder = new TextEncoder()
 const decoder = new TextDecoder('utf-8', {fatal: true})
 const limit = 2 * 1024 * 1024
+let applicationFeatures = {}
+
+/** Register bundled application extensions before bridge settings finish loading. */
+export function registerBridgeFeatures(features) {
+  applicationFeatures = features
+}
+
 const defaults = {port: 9072, enabled: true, shareUrl: true, pageContent: true, automation: true, sites: {}}
 const reservedPageTypes = new Set(['constructor', 'prototype', 'onFocus', 'currentUrl', 'daemons', 'getChromeHwnd', 'clickOk', 'hasOk', 'focusOk', 'valueOk', 'getValueOk'])
 
@@ -58,7 +65,7 @@ function normalizeSettings(value) {
     if(!Array.isArray(pageTypes) || pageTypes.length > 30 || !pageTypes.every(type => /^[a-zA-Z][a-zA-Z0-9]{0,63}$/.test(type) && !reservedPageTypes.has(type))) {
       throw new Error('Invalid website message types')
     }
-    settings.sites[origin] = {sensitiveValues: grant.sensitiveValues === true, userScripts: grant.userScripts === true, pageTypes: [...new Set(pageTypes)]}
+    settings.sites[origin] = {...applicationFeatures.normalizeSite?.(grant), pageTypes: [...new Set(pageTypes)]}
   }
   return settings
 }
@@ -311,24 +318,24 @@ export function installBrowserBridge({onMessage, onReady, onPolicyChanged}) {
       const version = generation
       const data = message.data
       if(!data || typeof data !== 'object' || typeof data.type !== 'string') return
-      if(['getValue', 'getMathJax', 'eval_'].includes(data.type) && !settings.pageContent) return
-      if(data.type === 'eval_') {
-        const grant = settings.sites[page.origin]
+      if(['getValue', 'getMathJax'].includes(data.type) && !settings.pageContent) return
+      const handler = Object.hasOwn(applicationFeatures.handlers || {}, data.type) ? applicationFeatures.handlers[data.type] : null
+      if(handler) {
+        if(!settings.pageContent) return
+        /** Reject results and effects after the page, policy or connection changes. */
+        function isCurrent() {
+          return version === generation && source === connection && source.readyState === 1 &&
+            pages.get(message.channel) === page && settings.enabled && settings.pageContent && settings.automation
+        }
         try {
-          if(!grant?.userScripts || !page.documentId || typeof data.data !== 'string' || data.data.length > 256 * 1024 || !chrome.userScripts?.execute) {
-            throw new Error('Enable user scripts for this website in the extension popup and Chrome extension details')
-          }
-          const tab = await chrome.tabs.get(page.tabId)
-          if(version !== generation || source !== connection || pageScope(tab.url) !== page.origin) throw new Error('The target page changed')
-          const result = await chrome.userScripts.execute({target: {tabId: page.tabId, documentIds: [page.documentId]}, js: [{code: data.data}], world: 'USER_SCRIPT'})
-          if(result[0]?.error) throw new Error('The user script failed')
-          if(data.tid && version === generation && source === connection) source.send({type: 'browserPage', channel: message.channel, data: {tid: data.tid, value: result[0]?.result, __from: 'fastExtension'}})
+          const value = await handler(data, {page: {...page, port: undefined}, grant: settings.sites[page.origin], isCurrent})
+          if(data.tid && isCurrent()) source.send({type: 'browserPage', channel: message.channel, data: {tid: data.tid, value, __from: 'fastExtension'}})
         } catch(error) {
-          if(version === generation && source === connection) source.send({type: 'browserPage', channel: message.channel, data: {type: 'error', msg: error.message, tid: data.tid, __from: 'fastExtension'}})
+          if(isCurrent()) source.send({type: 'browserPage', channel: message.channel, data: {type: 'error', msg: error.message, tid: data.tid, __from: 'fastExtension'}})
         }
         return
       }
-      page.port.postMessage({kind: 'command', message: {...data, _bridgeGeneration: generation, _allowSensitive: policy(page).sensitiveValues === true}})
+      page.port.postMessage({kind: 'command', message: {...data, _bridgeGeneration: generation}})
     },
   }
 

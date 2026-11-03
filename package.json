@@ -1,7 +1,7 @@
 {
   "name": "fast-browser",
   "type": "module",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "private": true,
   "scripts": {
     "dev": "node tools/cli.js dev",
@@ -29,6 +29,7 @@
     "./manifest": "./manifest.config.js",
     "./content": "./src/content-script/init.js",
     "./background": "./src/background.js",
+    "./bridge": "./src/browser-bridge.js",
     "./f": "./src/f.js"
   },
   "license": "MIT"

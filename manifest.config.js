@@ -5,7 +5,7 @@ const pkg = JSON.parse(fs.readFileSync(new URL('./package.json', import.meta.url
 export default defineManifest({
   manifest_version: 3,
   default_locale: 'en',
-  name: pkg.name,
+  name: '__MSG_appTitle__',
   version: pkg.version,
   icons: {
     48: 'logo.png',
@@ -23,18 +23,12 @@ export default defineManifest({
     all_frames: true,
   }],
   permissions: [
-    'sidePanel',
     "storage",
     "tabs",
     "offscreen",
     'nativeMessaging'
   ],
   
-  optional_permissions: ['userScripts'],
-  optional_host_permissions: ['http://*/*', 'https://*/*', 'file:///*'],
-  side_panel: {
-    default_path: 'src/sidepanel/index.html',
-  },
   background: {
     service_worker: 'src/background.js',
     type: 'module'

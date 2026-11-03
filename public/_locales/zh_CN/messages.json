@@ -1,6 +1,8 @@
 {
+  "port": { "message": "WebSocket 端口" },
+  "portHint": { "message": "默认 9072。若 F12 显示端口已切换，请填写实际 WebSocket 端口；连接地址固定为 127.0.0.1。" },
   "appTitle": {
-    "message": "Fast Browser"
+    "message": "Fast Bridge"
   },
   "uiLanguage": {
     "message": "zh-CN"
@@ -47,20 +49,11 @@
   "fileAccessHint": {
     "message": "需在插件详情开启“允许访问文件网址”."
   },
-  "sensitiveValues": {
-    "message": "允许读取密码、验证码及银行卡敏感输入"
-  },
   "pageMessages": {
     "message": "允许网页触发的消息"
   },
   "pageMessagesPlaceholder": {
     "message": "可信网站专用, 用逗号分隔"
-  },
-  "userScripts": {
-    "message": "允许 Fast 执行临时脚本"
-  },
-  "userScriptsHint": {
-    "message": "需在插件详情开启“允许用户脚本”."
   },
   "saving": {
     "message": "保存中…"

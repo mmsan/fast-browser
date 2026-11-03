@@ -8,8 +8,6 @@ let tabs = {} // tabId: tab
 let currentUrlRevision = 0
 let currentUrlWindowId = null
 let currentUrlTabId = null
-let tasks = ''
-let tasks_ = null
 let topOffset
 let ratioSysChrome
 const chromeHwndStorageKey = 'chromeHwnd'
@@ -96,20 +94,6 @@ const msgHandler = {
   },
   isRunning() {
     return true
-  },
-  ping({msg}) {
-    let urls = msg.urls
-    if(!tasks_ || tasks !== urls) {
-      tasks = urls
-      tasks_ = _.split(_.trim(tasks), /\s*[\r\n,]+\s*/g)
-      tasks_ = _.compact(tasks_)
-    }
-    _.forEach(tasks_, (v, i) => {
-      if(!v) return
-      fetch('https://' + v, {timeout: 1000}).then(r => {
-      }).catch(e => {
-      })
-    })
   },
   allTabs({msg}) {
     if(!bridge?.settings.shareUrl) return {tabs: []}
@@ -528,7 +512,7 @@ function initSocket() {
       const handler = Object.hasOwn(msgHandler, msg.type) && msgHandler[msg.type]
       if(!handler) return
       try {
-        if(['reload', 'goto', 'ping', 'sendToTab', 'close', 'only'].includes(msg.type) && !bridge.settings.automation) throw new Error('Automation is disabled')
+        if(['reload', 'goto', 'sendToTab', 'close', 'only'].includes(msg.type) && !bridge.settings.automation) throw new Error('Automation is disabled')
         const data = await handler({msg})
         if(data !== undefined && socket === self.__socket && socket?.readyState === 1) socket.send(JSON.stringify({ok: true, data: _.isObject(data) ? data : {result: data}, tid: msg.tid, __from: 'fastChromeBackground'}))
       } catch {
